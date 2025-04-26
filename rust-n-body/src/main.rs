@@ -1,29 +1,39 @@
+use bevy::{color::palettes::css::WHITE, prelude::*};
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiContextPass,};
+use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
 
-use bevy::{color::palettes::css::WHITE, prelude::*};
-use rand::Rng;
+#[derive(Resource)]
+struct SimulationSettings {
+    // live tweakables
+    delta_t: f32,
+    g: f32,
+    // needs simulation reset
+    body_mass: f32,
+    min_body_radius: f32,
+    max_body_radius: f32,
+    n_bodies: u32,
+    spawn_area: RangeInclusive<f32>,
+    z: f32,
+}
 
-const DELTA_T: f32 = 0.001;
-const BODY_RADIUS: f32 = 2.0;
-const BODY_MASS: f32 = 50.0;
-const N_BODIES: u32 = 1000;
-const SPAWN_AREA: RangeInclusive<f32> = -100.0..=100.0;
-const G: f32 = 1.0;
-const Z: f32 = 10.0;
-fn main() {
-    App::new()
-    .insert_resource(ClearColor(
-        Color::BLACK,
-    ))
-    .add_plugins(DefaultPlugins)
-    .add_systems(Startup, add_bodies)
-    .add_systems(Update, update)
-    .run();
+impl Default for SimulationSettings {
+    fn default() -> Self {
+        SimulationSettings {
+            delta_t: 0.001,
+            g: 1.0,
+            body_mass: 50.0,
+            min_body_radius: 0.0,
+            max_body_radius: 5.0,
+            n_bodies: 1500,
+            spawn_area: -300.0..=300.0,
+            z: 10.0,
+        }
+    }
 }
 
 #[derive(Component)]
 struct Velocity(Vec3);
-
 
 #[derive(Component)]
 struct Body {
@@ -31,59 +41,137 @@ struct Body {
     radius: f32,
 }
 
+#[derive(Event)]
+struct ResetEvent;
+
+fn main() {
+    App::new()
+        .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(SimulationSettings::default())
+        .add_plugins(DefaultPlugins)
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        })
+        .add_event::<ResetEvent>()
+        .add_systems(EguiContextPass, ui_window)
+        .add_systems(Startup, (spawn_camera, add_bodies))
+        .add_systems(Update, (reset_handler, update))
+        .run();
+}
+
+fn ui_window(
+    mut contexts: EguiContexts, mut settings: ResMut<SimulationSettings>, 
+    mut reset_writer: EventWriter<ResetEvent>
+) {
+    egui::Window::new("Settings").show(contexts.ctx_mut(), |ui| {
+        ui.add(egui::Slider::new(&mut settings.g, 0.0..=10.0).text("Gravity constant"));
+        ui.add(egui::Slider::new(&mut settings.delta_t, 0.00000001..=0.01).text("Delta T"));
+
+        ui.add(egui::Label::new("Reset Sim after tweaking these"));
+        ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=5000).text("Num Bodies"));
+        ui.add(egui::Slider::new(&mut settings.body_mass, 0.0..=5000.0).text("Body Mass"));
+        if ui.button("Reset").clicked() {
+            reset_writer.write(ResetEvent);
+        }
+    });
+}
+
+fn reset_handler(
+    query: Query<Entity, With<Body>>,
+    reset_event: EventReader<ResetEvent>,
+    mut commands: Commands,
+    materials: ResMut<Assets<ColorMaterial>>,
+    meshes: ResMut<Assets<Mesh>>,
+    settings: Res<SimulationSettings>
+) {
+    if reset_event.is_empty() {
+        return;
+    }
+
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+
+    add_bodies(commands, materials, meshes, settings);
+}
+
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn(Camera2d::default());
+}
+
+fn mass_to_radius(mass: f32, min_radius: f32, max_radius: f32, max_mass: f32) -> f32 {
+    let mass = mass.max(0.0); // prevent negative mass
+    let normalized_log = (mass).ln() / (max_mass).ln();
+    min_radius + (max_radius - min_radius) * normalized_log
+}
+
 fn add_bodies(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    settings: Res<SimulationSettings>
 ) {
-
     let mut rng = rand::rng();
-    commands.spawn(Camera2d::default());
-    for _ in 0..N_BODIES {
+    for _ in 0..settings.n_bodies {
         let body = Body {
-            mass: BODY_MASS, 
-            radius: BODY_RADIUS,
+            mass: settings.body_mass,
+            radius: mass_to_radius(settings.body_mass, 
+                settings.min_body_radius, 
+                settings.max_body_radius,
+                5000.0
+            ),
         };
-        let x = rng.random_range(SPAWN_AREA);
-        let y = rng.random_range(SPAWN_AREA);
-        let transform: Transform = Transform::from_xyz(x, y, Z);
-        let velocity = Velocity(Vec3 { x: (0.0), y: (0.0), z: (0.0) });
-        spawn_body(body, transform, velocity, &mut commands, &mut materials, &mut meshes);
+        let x = rng.random_range(settings.spawn_area.clone());
+        let y = rng.random_range(settings.spawn_area.clone());
+        let transform: Transform = Transform::from_xyz(x, y, settings.z);
+        let velocity = Velocity(Vec3::ZERO);
+        spawn_body(
+            body,
+            transform,
+            velocity,
+            &mut commands,
+            &mut materials,
+            &mut meshes,
+        );
     }
-
 }
 
-fn update(mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>) {
+fn update(mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>, settings: Res<SimulationSettings>) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
     for (entity1, _body1, transform1, _velocity) in query.iter() {
         // transform.translation.x += DELTA_T * 2.0; // TEST
-        let mut accel_cum = Vec3 { x: (0.0), y: (0.0), z: (Z) };
+        let mut accel_cum = Vec3 {
+            x: (0.0),
+            y: (0.0),
+            z: (settings.z),
+        };
 
         for (entity2, body2, transform2, _velocity) in query.iter() {
-            if entity1.index() == entity2.index() { // dont consider itself
+            if entity1.index() == entity2.index() {
+                // dont consider itself
                 continue;
             }
 
             // Gravitational interraction
             let m2 = body2.mass;
-            
+
             let r = transform2.translation - transform1.translation;
             // let mag_sqr = r.x * r.x + r.y * r.y;
             // let mag = mag_sqr.sqrt();
 
             let mag = r.length();
 
-            let a1:Vec3  = G * (m2 / (/* mag_sqrt * */mag)) * r;
-            
+            let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r * settings.delta_t;
+
             accel_cum += a1;
         }
         accel_map.insert(entity1.index(), accel_cum);
     }
 
     for (entity1, _body1, mut transform1, mut velocity) in query.iter_mut() {
-        velocity.0 += accel_map.get(&entity1.index()).unwrap() * DELTA_T;
-        transform1.translation.x += velocity.0.x * DELTA_T;
-        transform1.translation.y += velocity.0.y * DELTA_T;
+        velocity.0 += accel_map.get(&entity1.index()).unwrap();
+        transform1.translation.x += velocity.0.x * settings.delta_t;
+        transform1.translation.y += velocity.0.y * settings.delta_t;
     }
 }
 
