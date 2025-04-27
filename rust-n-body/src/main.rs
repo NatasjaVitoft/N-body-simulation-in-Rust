@@ -122,6 +122,24 @@ pub fn mass_to_hue(m: f32, min_mass: f32, max_mass: f32) -> f32 {
     ((m - min_mass) * new_max) / (max_mass - min_mass)
 }
 
+fn body_collide(
+    body1: &Body,
+    body2: &Body,
+    vel1: &Velocity,
+    vel2: &Velocity,
+    imp: &Vec3,
+    dist: f32,
+) -> Vec3 {
+    // elastic colliison
+    let m_sum = body1.mass + body2.mass;
+    let v_diff = vel2.0 - vel1.0;
+
+    let num_a = 2.0 * body2.mass * v_diff.dot(*imp);
+    let den_a = m_sum * dist * dist;
+
+    imp * (num_a / den_a)
+} 
+
 fn add_bodies(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -162,15 +180,16 @@ fn update(
     settings: Res<SimulationSettings>,
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
-    for (entity1, _body1, transform1, _velocity) in query.iter() {
-        // transform.translation.x += DELTA_T * 2.0; // TEST
+    let mut col_map: HashMap<u32, Vec3> = HashMap::new();
+ 
+    for (entity1, body1, transform1, velocity1) in query.iter() {
         let mut accel_cum = Vec3 {
             x: (0.0),
             y: (0.0),
             z: (settings.z),
         };
 
-        for (entity2, body2, transform2, _velocity) in query.iter() {
+        for (entity2, body2, transform2, velocity2) in query.iter().remaining() {
             if entity1.index() == entity2.index() {
                 // dont consider itself
                 continue;
@@ -180,12 +199,17 @@ fn update(
             let m2 = body2.mass;
 
             let r = transform2.translation - transform1.translation;
+
+            // collision detection (BUGGED)
+            let dist = transform1.translation.distance(transform2.translation);
+            if dist < body1.radius + body2.radius {
+                col_map.insert(entity1.index(), body_collide(&body1, &body2, &velocity1, &velocity2, &r, dist));
+            }
             // let mag_sqr = r.x * r.x + r.y * r.y;
             // let mag = mag_sqr.sqrt();
 
             let mag = r.length();
-
-            let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r * settings.delta_t;
+            let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r.normalize() * settings.delta_t;
 
             accel_cum += a1;
         }
@@ -193,6 +217,8 @@ fn update(
     }
 
     for (entity1, _body1, mut transform1, mut velocity) in query.iter_mut() {
+        velocity.0 += col_map.get(&entity1.index()).unwrap_or(&Vec3::ZERO);
+        
         velocity.0 += accel_map.get(&entity1.index()).unwrap();
         transform1.translation.x += velocity.0.x * settings.delta_t;
         transform1.translation.y += velocity.0.y * settings.delta_t;
@@ -209,7 +235,7 @@ fn spawn_body(
 ) {
     commands.spawn((
         Mesh2d(meshes.add(Circle::new(body.radius))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.3, 0.3)))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.5, 0.1)))),
         body,
         transform,
         velocity,
