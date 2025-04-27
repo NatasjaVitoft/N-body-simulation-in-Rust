@@ -1,17 +1,18 @@
-use bevy::{color::palettes::css::WHITE, prelude::*};
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiContextPass,};
+pub(crate) mod tests;
+
+use bevy::prelude::*;
+use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
 
 #[derive(Resource)]
-struct SimulationSettings {
+pub struct SimulationSettings {
     // live tweakables
     delta_t: f32,
     g: f32,
     // needs simulation reset
-    body_mass: f32,
-    min_body_radius: f32,
-    max_body_radius: f32,
+    min_body_mass: f32,
+    max_body_mass: f32,
     n_bodies: u32,
     spawn_area: RangeInclusive<f32>,
     z: f32,
@@ -22,9 +23,8 @@ impl Default for SimulationSettings {
         SimulationSettings {
             delta_t: 0.001,
             g: 1.0,
-            body_mass: 50.0,
-            min_body_radius: 0.0,
-            max_body_radius: 5.0,
+            min_body_mass: 10.0,
+            max_body_mass: 100.0,
             n_bodies: 1500,
             spawn_area: -300.0..=300.0,
             z: 10.0,
@@ -39,6 +39,7 @@ struct Velocity(Vec3);
 struct Body {
     mass: f32,
     radius: f32,
+    hue: f32,
 }
 
 #[derive(Event)]
@@ -60,8 +61,9 @@ fn main() {
 }
 
 fn ui_window(
-    mut contexts: EguiContexts, mut settings: ResMut<SimulationSettings>, 
-    mut reset_writer: EventWriter<ResetEvent>
+    mut contexts: EguiContexts,
+    mut settings: ResMut<SimulationSettings>,
+    mut reset_writer: EventWriter<ResetEvent>,
 ) {
     egui::Window::new("Settings").show(contexts.ctx_mut(), |ui| {
         ui.add(egui::Slider::new(&mut settings.g, 0.0..=10.0).text("Gravity constant"));
@@ -69,7 +71,8 @@ fn ui_window(
 
         ui.add(egui::Label::new("Reset Sim after tweaking these"));
         ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=5000).text("Num Bodies"));
-        ui.add(egui::Slider::new(&mut settings.body_mass, 0.0..=5000.0).text("Body Mass"));
+        ui.add(egui::Slider::new(&mut settings.min_body_mass, 1.0..=5000.0).text("Min Body Mass"));
+        ui.add(egui::Slider::new(&mut settings.max_body_mass, 1.0..=5000.0).text("Max Body Mass"));
         if ui.button("Reset").clicked() {
             reset_writer.write(ResetEvent);
         }
@@ -82,7 +85,7 @@ fn reset_handler(
     mut commands: Commands,
     materials: ResMut<Assets<ColorMaterial>>,
     meshes: ResMut<Assets<Mesh>>,
-    settings: Res<SimulationSettings>
+    settings: Res<SimulationSettings>,
 ) {
     if reset_event.is_empty() {
         return;
@@ -99,27 +102,45 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
 }
 
-fn mass_to_radius(mass: f32, min_radius: f32, max_radius: f32, max_mass: f32) -> f32 {
-    let mass = mass.max(0.0); // prevent negative mass
-    let normalized_log = (mass).ln() / (max_mass).ln();
-    min_radius + (max_radius - min_radius) * normalized_log
+fn mass_to_radius(m: f32) -> f32 {
+    // Radius determination: r=sqrt(G * Mass/accel)
+    let g = 1.0; // constant for size
+    let a = 10.0; // initial accel
+    let res = g * m / a;
+    res.sqrt()
+}
+
+pub fn mass_to_hue(m: f32, min_mass: f32, max_mass: f32) -> f32 {
+    // linear conversion
+    // NewValue = (((OldValue - OldMin) * (NewMax - NewMin)) / (OldMax - OldMin)) + NewMin
+    let new_max = 1.0;
+
+    if min_mass == max_mass {
+        return 1.0;
+    }
+
+    ((m - min_mass) * new_max) / (max_mass - min_mass)
 }
 
 fn add_bodies(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    settings: Res<SimulationSettings>
+    settings: Res<SimulationSettings>,
 ) {
+    let norm_min = if settings.min_body_mass < settings.max_body_mass {
+        settings.min_body_mass
+    } else {
+        settings.max_body_mass
+    };
+
     let mut rng = rand::rng();
     for _ in 0..settings.n_bodies {
+        let rng_mass = rng.random_range(norm_min..=settings.max_body_mass);
         let body = Body {
-            mass: settings.body_mass,
-            radius: mass_to_radius(settings.body_mass, 
-                settings.min_body_radius, 
-                settings.max_body_radius,
-                5000.0
-            ),
+            mass: rng_mass,
+            radius: mass_to_radius(rng_mass),
+            hue: mass_to_hue(rng_mass, settings.min_body_mass, settings.max_body_mass),
         };
         let x = rng.random_range(settings.spawn_area.clone());
         let y = rng.random_range(settings.spawn_area.clone());
@@ -136,7 +157,10 @@ fn add_bodies(
     }
 }
 
-fn update(mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>, settings: Res<SimulationSettings>) {
+fn update(
+    mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>,
+    settings: Res<SimulationSettings>,
+) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
     for (entity1, _body1, transform1, _velocity) in query.iter() {
         // transform.translation.x += DELTA_T * 2.0; // TEST
@@ -185,7 +209,7 @@ fn spawn_body(
 ) {
     commands.spawn((
         Mesh2d(meshes.add(Circle::new(body.radius))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(WHITE))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.3, 0.3)))),
         body,
         transform,
         velocity,
