@@ -1,8 +1,10 @@
 pub(crate) mod tests;
 pub(crate) mod quadtree;
+pub(crate) mod bhtree;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
+use quadtree::{BHTree, Quadrant};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
 
@@ -163,6 +165,7 @@ fn add_bodies(
         };
         let x = rng.random_range(settings.spawn_area.clone());
         let y = rng.random_range(settings.spawn_area.clone());
+
         let transform: Transform = Transform::from_xyz(x, y, settings.z);
         let velocity = Velocity(Vec3::ZERO);
         spawn_body(
@@ -181,16 +184,30 @@ fn update(
     settings: Res<SimulationSettings>,
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
-    let mut col_map: HashMap<u32, Vec3> = HashMap::new();
- 
-    for (entity1, body1, transform1, velocity1) in query.iter() {
-        let mut accel_cum = Vec3 {
-            x: (0.0),
-            y: (0.0),
-            z: (settings.z),
-        };
+    // let mut col_map: HashMap<u32, Vec3> = HashMap::new();
+    let mut tree = BHTree::new(Quadrant::new(2400.));
+ /*    let mut accel_cum = Vec3 {
+        x: (0.0),
+        y: (0.0),
+        z: (settings.z),
+    }; */
 
-        for (entity2, body2, transform2, velocity2) in query.iter().remaining() {
+
+    for (entity1, body1, transform1, velocity1) in query.iter() {
+
+        tree.insert(entity1, *body1, *transform1);
+    }
+
+    for (entity1, body1, transform1, velocity1) in query.iter_mut() {
+
+        
+        let accel = tree.get_force(&entity1, &body1, &transform1, settings.g);
+        accel_map.insert(entity1.index(), accel);
+    }
+       
+    
+
+ /*        for (entity2, body2, transform2, velocity2) in query.iter().remaining() {
             if entity1.index() == entity2.index() {
                 // dont consider itself
                 continue;
@@ -201,24 +218,23 @@ fn update(
 
             let r = transform2.translation - transform1.translation;
 
-            // collision detection (BUGGED)
+           /*  // collision detection (BUGGED)
             let dist = transform1.translation.distance(transform2.translation);
             if dist < body1.radius + body2.radius {
                 col_map.insert(entity1.index(), body_collide(&body1, &body2, &velocity1, &velocity2, &r, dist));
-            }
+            } */
             // let mag_sqr = r.x * r.x + r.y * r.y;
             // let mag = mag_sqr.sqrt();
 
             let mag = r.length();
             let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r.normalize() * settings.delta_t;
-
+            
             accel_cum += a1;
-        }
-        accel_map.insert(entity1.index(), accel_cum);
-    }
+            } */
+ 
 
     for (entity1, _body1, mut transform1, mut velocity) in query.iter_mut() {
-        velocity.0 += col_map.get(&entity1.index()).unwrap_or(&Vec3::ZERO);
+        // velocity.0 += col_map.get(&entity1.index()).unwrap_or(&Vec3::ZERO);
         
         velocity.0 += accel_map.get(&entity1.index()).unwrap();
         transform1.translation.x += velocity.0.x * settings.delta_t;

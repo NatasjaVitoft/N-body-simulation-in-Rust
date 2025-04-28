@@ -2,6 +2,7 @@ use crate::Body;
 use bevy::prelude::*;
 
 const MIN_QUADRANT_LENGTH: f32 = 5e-3;
+const THETA_THRESHOLD: f32 = 0.7;
 enum Corner {
     NW,
     NE,
@@ -9,13 +10,13 @@ enum Corner {
     SE,
 }
 
-struct BHTree {
+pub struct BHTree {
     quad: Quadrant,
     node: Option<Node>,
 }
 
 impl BHTree {
-    fn new(quad: Quadrant) -> Self {
+    pub fn new(quad: Quadrant) -> Self {
         BHTree {
             quad,
             node: Option::None,
@@ -41,8 +42,6 @@ impl BHTree {
                             transform,
                         );
                         subquad.insert_to_quadrant(particle, body, transform);
-                        current_node.mass += current_node.body.mass;
-                        current_node.mass_pos = current_node.mass_pos - transform.translation;
                         current_node.item = NodeItem::Internal(subquad);
                     }
                     // implied else: if we've already got too small of a grid, we still add the mass for a cheap estimate
@@ -59,15 +58,63 @@ impl BHTree {
             ))
         }
     }
+
+    pub fn get_force(&self, p: &Entity, b: &Body, other_transform: &Transform, g: f32) -> Vec3 {
+        if let Some(current_node) = &self.node {
+            match &current_node.item {
+                NodeItem::Internal(subquad) => {
+                    let dist = current_node.mass_pos.distance(other_transform.translation);
+                    if self.quad.len / dist < THETA_THRESHOLD {
+                        // treat node as a single body
+                        // Gravitational interraction
+                        let m2 = current_node.mass;
+
+                        let r =  current_node.mass_pos - other_transform.translation;
+
+                        let mag = r.length();
+
+                        return g * (m2 / (/* mag_sqrt * */mag)) * r.normalize();
+                    } else {
+                        // traverse the tree, returning the total force
+                        subquad.get_force(p, b, other_transform, g)
+                    }
+                }
+                NodeItem::Leaf(node_particle) => {
+                    if node_particle.index() != p.index() {
+                        let m2 = current_node.mass;
+
+                        let r = current_node.mass_pos - other_transform.translation;
+
+                        let mag = r.length();
+
+                        return g * (m2 / (/* mag_sqrt * */mag)) * r.normalize();
+                    } else {
+                        // index was the same, this is the same particle
+                        Vec3::new(0., 0., 10.)
+                    }
+                }
+            }
+        } else {
+            // there's no body at self, so there's no force
+            Vec3::new(0., 0., 10.)
+        }
+    }
 }
 
 #[derive(Debug)]
-struct Quadrant {
+pub struct Quadrant {
     center: Vec3,
     len: f32,
 }
 
 impl Quadrant {
+
+    pub fn new(length: f32) -> Self {
+        Quadrant {
+            len: length,
+            center: Vec3::new(0., 0., 10.)
+        }
+    }
     /// return true if this Quadrant contains (x,y)
     fn contains(&self, x: f32, y: f32) -> bool {
         let hl = self.len / 2.0;
@@ -153,6 +200,13 @@ impl SubQuadrants {
                 self.se.quad
             ),
         }
+    }
+
+    fn get_force(&self, p: &Entity, b: &Body, other_transform: &Transform, g: f32) -> Vec3 {
+        self.nw.get_force(p, b, other_transform, g)
+            + self.ne.get_force(p, b, other_transform, g)
+            + self.sw.get_force(p, b, other_transform, g)
+            + self.se.get_force(p, b, other_transform, g)
     }
 }
 
