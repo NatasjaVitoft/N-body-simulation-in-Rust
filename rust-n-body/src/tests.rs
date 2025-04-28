@@ -16,6 +16,5 @@ mod tests {
     fn test_hue_conversion_10() {
         assert_eq!(mass_to_hue(2500.0, 0.0, 5000.0), 0.5);
     }
-
     
 }

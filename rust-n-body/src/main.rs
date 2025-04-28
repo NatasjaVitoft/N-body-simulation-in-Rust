@@ -1,4 +1,5 @@
 pub(crate) mod tests;
+pub(crate) mod quadtree;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
@@ -33,10 +34,10 @@ impl Default for SimulationSettings {
 }
 
 #[derive(Component)]
-struct Velocity(Vec3);
+pub struct Velocity(Vec3);
 
-#[derive(Component)]
-struct Body {
+#[derive(Component, Clone, Copy)]
+pub struct Body {
     mass: f32,
     radius: f32,
     hue: f32,
