@@ -1,10 +1,10 @@
 pub(crate) mod tests;
-pub(crate) mod quadtree;
+//pub(crate) mod quadtree;
 //pub(crate) mod bhtree;
 pub(crate) mod idktree;
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
-use quadtree::{BHTree, Quadrant};
+use idktree::{Quad, Quadtree};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
 
@@ -73,9 +73,10 @@ fn ui_window(
     egui::Window::new("Settings").show(contexts.ctx_mut(), |ui| {
         ui.add(egui::Slider::new(&mut settings.g, 0.0..=10.0).text("Gravity constant"));
         ui.add(egui::Slider::new(&mut settings.delta_t, 0.00000001..=0.01).text("Delta T"));
+        ui.add(egui::Slider::new(&mut settings.theta, 0.1..=1.0).text("BH Theta"));
 
         ui.add(egui::Label::new("Reset Sim after tweaking these"));
-        ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=5000).text("Num Bodies"));
+        ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=50000).text("Num Bodies"));
         ui.add(egui::Slider::new(&mut settings.min_body_mass, 1.0..=5000.0).text("Min Body Mass"));
         ui.add(egui::Slider::new(&mut settings.max_body_mass, 1.0..=5000.0).text("Max Body Mass"));
         if ui.button("Reset").clicked() {
@@ -143,7 +144,7 @@ fn body_collide(
     let den_a = m_sum * dist * dist;
 
     imp * (num_a / den_a)
-} 
+}
 
 fn add_bodies(
     mut commands: Commands,
@@ -187,57 +188,65 @@ fn update(
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
     // let mut col_map: HashMap<u32, Vec3> = HashMap::new();
-    let mut tree = BHTree::new(Quadrant::new(2400.));
- /*    let mut accel_cum = Vec3 {
+
+/*     let transforms: Vec<Transform> = query
+        .iter()
+        .map(|(_, _, transform, _)| transform.clone())
+        .collect();
+
+    let quad = Quad::new_containing(&transforms); */
+    let quad = Quad::new(0.0, 0.0, 100000.0);
+    let mut tree = Quadtree::new(quad);
+    /*    let mut accel_cum = Vec3 {
         x: (0.0),
         y: (0.0),
         z: (settings.z),
     }; */
 
-
     for (entity1, body1, transform1, velocity1) in query.iter() {
-
-        tree.insert(entity1, *body1, *transform1);
+        tree.insert(entity1, *transform1, *body1);
     }
 
     for (entity1, body1, transform1, velocity1) in query.iter_mut() {
-
-        
-        let accel = tree.get_force(&entity1, &body1, &transform1, settings.g);
+        let accel = tree.get_total_accel(
+            entity1,
+            *transform1,
+            *body1,
+            settings.g,
+            settings.delta_t,
+            settings.theta,
+        );
         accel_map.insert(entity1.index(), accel);
     }
-       
-    
 
- /*        for (entity2, body2, transform2, velocity2) in query.iter().remaining() {
-            if entity1.index() == entity2.index() {
-                // dont consider itself
-                continue;
-            }
+    /*        for (entity2, body2, transform2, velocity2) in query.iter().remaining() {
+     if entity1.index() == entity2.index() {
+         // dont consider itself
+         continue;
+     }
 
-            // Gravitational interraction
-            let m2 = body2.mass;
+     // Gravitational interraction
+     let m2 = body2.mass;
 
-            let r = transform2.translation - transform1.translation;
+     let r = transform2.translation - transform1.translation;
 
-           /*  // collision detection (BUGGED)
-            let dist = transform1.translation.distance(transform2.translation);
-            if dist < body1.radius + body2.radius {
-                col_map.insert(entity1.index(), body_collide(&body1, &body2, &velocity1, &velocity2, &r, dist));
-            } */
-            // let mag_sqr = r.x * r.x + r.y * r.y;
-            // let mag = mag_sqr.sqrt();
+    /*  // collision detection (BUGGED)
+     let dist = transform1.translation.distance(transform2.translation);
+     if dist < body1.radius + body2.radius {
+         col_map.insert(entity1.index(), body_collide(&body1, &body2, &velocity1, &velocity2, &r, dist));
+     } */
+     // let mag_sqr = r.x * r.x + r.y * r.y;
+     // let mag = mag_sqr.sqrt();
 
-            let mag = r.length();
-            let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r.normalize() * settings.delta_t;
-            
-            accel_cum += a1;
-            } */
- 
+     let mag = r.length();
+     let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r.normalize() * settings.delta_t;
+
+     accel_cum += a1;
+     } */
 
     for (entity1, _body1, mut transform1, mut velocity) in query.iter_mut() {
         // velocity.0 += col_map.get(&entity1.index()).unwrap_or(&Vec3::ZERO);
-        
+
         velocity.0 += accel_map.get(&entity1.index()).unwrap();
         transform1.translation.x += velocity.0.x * settings.delta_t;
         transform1.translation.y += velocity.0.y * settings.delta_t;
