@@ -5,12 +5,15 @@ use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
 
+mod quadtree;
+use crate::quadtree::{BHTree, Quadrant};
+
+
 #[derive(Resource)]
 pub struct SimulationSettings {
-    // live tweakables
+
     delta_t: f32,
     g: f32,
-    // needs simulation reset
     min_body_mass: f32,
     max_body_mass: f32,
     n_bodies: u32,
@@ -27,7 +30,7 @@ impl Default for SimulationSettings {
             max_body_mass: 100.0,
             n_bodies: 1500,
             spawn_area: -300.0..=300.0,
-            z: 10.0,
+            z: 0.0,
         }
     }
 }
@@ -76,6 +79,12 @@ fn ui_window(
         if ui.button("Reset").clicked() {
             reset_writer.write(ResetEvent);
         }
+
+        let num_bodies = settings.n_bodies as f32;
+        let simulation_size = num_bodies * 2.0; 
+        let root_quadrant = Quadrant::new(Vec2::new(0.0, 0.0), simulation_size);
+
+    
     });
 }
 
@@ -122,6 +131,25 @@ pub fn mass_to_hue(m: f32, min_mass: f32, max_mass: f32) -> f32 {
     ((m - min_mass) * new_max) / (max_mass - min_mass)
 }
 
+/*
+fn body_collide(
+    body1: &Body,
+    body2: &Body,
+    vel1: &Velocity,
+    vel2: &Velocity,
+    imp: &Vec3,
+    dist: f32,
+) -> Vec3 {
+    // elastic colliison
+    let m_sum = body1.mass + body2.mass;
+    let v_diff = vel2.0 - vel1.0;
+
+    let num_a = 2.0 * body2.mass * v_diff.dot(*imp);
+    let den_a = m_sum * dist * dist;
+
+    imp * (num_a / den_a)
+} */
+
 fn add_bodies(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -162,40 +190,55 @@ fn update(
     settings: Res<SimulationSettings>,
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
-    for (entity1, _body1, transform1, _velocity) in query.iter() {
-        // transform.translation.x += DELTA_T * 2.0; // TEST
-        let mut accel_cum = Vec3 {
-            x: (0.0),
-            y: (0.0),
-            z: (settings.z),
-        };
 
-        for (entity2, body2, transform2, _velocity) in query.iter() {
-            if entity1.index() == entity2.index() {
-                // dont consider itself
-                continue;
-            }
+    let mut min = Vec2::splat(f32::MAX);
+    let mut max = Vec2::splat(f32::MIN);
 
-            // Gravitational interraction
-            let m2 = body2.mass;
-
-            let r = transform2.translation - transform1.translation;
-            // let mag_sqr = r.x * r.x + r.y * r.y;
-            // let mag = mag_sqr.sqrt();
-
-            let mag = r.length();
-
-            let a1: Vec3 = settings.g * (m2 / (/* mag_sqrt * */mag)) * r * settings.delta_t;
-
-            accel_cum += a1;
-        }
-        accel_map.insert(entity1.index(), accel_cum);
+    for (_entity, _body, transform, _velocity) in query.iter() {
+        let pos = transform.translation.truncate();
+        min = min.min(pos);
+        max = max.max(pos);
     }
 
-    for (entity1, _body1, mut transform1, mut velocity) in query.iter_mut() {
-        velocity.0 += accel_map.get(&entity1.index()).unwrap();
-        transform1.translation.x += velocity.0.x * settings.delta_t;
-        transform1.translation.y += velocity.0.y * settings.delta_t;
+    let center = (min + max) / 2.0;
+    let size = (max - min).max_element(); 
+    
+    let root_quad = Quadrant::new(center, size * 40.0);
+   
+
+    root_quad.print_bounds(); 
+
+    //spawn_quadrants(&root_quad, &mut commands, &mut materials, &mut meshes, 0);
+
+    let mut tree = BHTree::new(root_quad);
+
+
+    for (entity, body, transform, _velocity) in query.iter() {
+        let pos = transform.translation.truncate();
+        tree.insert(entity, body, pos);
+    }
+
+    for (entity, body, transform, velocity) in query.iter() {
+        let mut accel_cum = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: settings.z,
+        };
+
+        let pos = transform.translation.truncate();
+
+        let force = tree.compute_force(entity, body, pos);
+
+        accel_cum += Vec3::new(force.x, force.y, 0.0) * settings.g * settings.delta_t;
+
+        accel_map.insert(entity.index(), accel_cum);
+    }
+
+    for (entity, _body, mut transform, mut velocity) in query.iter_mut() {
+        velocity.0 += accel_map.get(&entity.index()).unwrap_or(&Vec3::ZERO);
+
+        transform.translation.x += velocity.0.x * settings.delta_t;
+        transform.translation.y += velocity.0.y * settings.delta_t;
     }
 }
 
@@ -209,9 +252,48 @@ fn spawn_body(
 ) {
     commands.spawn((
         Mesh2d(meshes.add(Circle::new(body.radius))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.3, 0.3)))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.5, 0.1)))),
         body,
         transform,
         velocity,
     ));
 }
+
+
+
+/*
+fn spawn_quadrants(
+    quadrant: &Quadrant,
+    commands: &mut Commands,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    depth: u32, // Depth of the quadrant to prevent infinite recursion
+) {
+    // Visualize the current quadrant
+    let transform = Transform::from_xyz(quadrant.center.x, quadrant.center.y, 0.0);
+
+    // You can adjust the color and opacity to differentiate between levels of depth
+    let color = Color::rgba(0.5, 0.5, 0.5, 1.0 / (depth + 1) as f32);
+    
+    // Create a rectangle (or square) to visualize the quadrant
+    commands.spawn_bundle(OrthographicCameraBundle {
+        transform,
+        ..Default::default()
+    });
+    
+    commands.spawn_bundle((
+        meshes.add(Mesh::from(shape::Quad { size: Vec2::new(quadrant.len, quadrant.len), ..Default::default() })),
+        materials.add(ColorMaterial::from(color)),
+        transform,
+    ));
+
+    // Stop recursion if we reach the minimum size
+    if quadrant.len > MIN_QUADRANT_LENGTH {
+        // Recursively add subquadrants (NW, NE, SW, SE)
+        for corner in [Corner::NW, Corner::NE, Corner::SW, Corner::SE] {
+            let subquad = quadrant.subquad(corner);
+            spawn_quadrants(&subquad, commands, materials, meshes, depth + 1);
+        }
+    }
+}
+*/
