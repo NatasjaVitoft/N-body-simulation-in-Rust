@@ -1,7 +1,7 @@
 pub(crate) mod tests;
 pub(crate) mod quadtree;
-pub(crate) mod bhtree;
-
+//pub(crate) mod bhtree;
+pub(crate) mod idktree;
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use quadtree::{BHTree, Quadrant};
@@ -19,6 +19,7 @@ pub struct SimulationSettings {
     n_bodies: u32,
     spawn_area: RangeInclusive<f32>,
     z: f32,
+    theta: f32,
 }
 
 impl Default for SimulationSettings {
@@ -31,6 +32,7 @@ impl Default for SimulationSettings {
             n_bodies: 1500,
             spawn_area: -300.0..=300.0,
             z: 10.0,
+            theta: 0.5,
         }
     }
 }

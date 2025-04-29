@@ -1,43 +1,74 @@
+use std::mem;
+
 use bevy::{math::VectorSpace, prelude::*};
 
 use crate::Body;
 
-pub struct Quadtree {
-    node: Node,
+pub struct Quadtree<'a> {
+    node: Option<Node>,
+    theta: f32,
 }
 
 impl Quadtree {
-    fn new(quad: Quad) -> Quadtree {
+    fn new(quad: Quad, theta: f32) -> Quadtree {
         Quadtree {
-            node: Node {
+            node: Some(Node {
                 quad,
                 node_type: NodeType::Leaf(None),
                 mass: 0.0,
                 pos: Vec2::ZERO,
-            },
+            }),
+            theta,
         }
     }
 
     pub fn insert(&mut self, entity: Entity, body: Body, transform: Transform) {
-        match &self.node.node_type {
-            NodeType::Leaf(option) => {
-                if let Some(tuple) = option {
-                    // occupied. must subdivide
-                    let mut subs = SubQuads::new(&self.node.quad);
-                    self.node.subdivide_and_insert(&mut subs, entity, body, transform);
-                    self.node.node_type = NodeType::Internal(subs);
-                    self.node.mass += body.mass;
-                }   
-                else {
-                    // empty node
-                    self.node.node_type = NodeType::Leaf(Some((entity, body, transform)));
-                    self.node.mass = body.mass;
+        if let Some(node) = &mut self.node {
+            match mem::replace(&mut self.node.node_type, NodeType::Leaf(None)) {
+                NodeType::Leaf(option) => {
+                    if let Some(_tuple) = option {
+                        // occupied. must subdivide
+                        let mut subs = SubQuads::new(&self.node.quad);
+                        self.node
+                            .subdivide_and_insert(&mut subs, entity, body, transform);
+                        self.node.node_type = NodeType::Internal(subs);
+                        self.node.mass += body.mass;
+                    } else {
+                        // empty node
+                        self.node.node_type = NodeType::Leaf(Some((entity, body, transform)));
+                        self.node.mass = body.mass;
+                    }
                 }
-            },
-            NodeType::Internal(subquads) => {
-                // TODO
+                NodeType::Internal(mut subquads) => {
+                    // TODO
+                    // update center of node mass
+                    let m1 = self.node.mass;
+                    let m2 = body.mass;
+                    let m = m1 + m2;
+                    let x1 = self.node.pos.x;
+                    let x2 = transform.translation.x;
+                    let y1 = self.node.pos.y;
+                    let y2 = transform.translation.y;
+
+                    let x = (x1 * m1 + x2 * m2) / m;
+                    let y = (y1 * m1 + y2 * m2) / m;
+
+                    self.node.pos.x = x;
+                    self.node.pos.y = y;
+                    self.node.mass += body.mass;
+
+                    self.node
+                        .subdivide_and_insert(&mut subquads, entity, body, transform);
+                }
             }
         }
+    }
+
+    pub fn get_accel(&self, entity: Entity, body: Body, transform: Transform) {
+        // S =  quad size
+        // d = distance between node center of mass and body
+        
+        let current_node = self.node
     }
 }
 
@@ -72,16 +103,31 @@ impl Quad {
         let h = self.size / 2.;
         let q = h / 2.;
         match c {
-            Corner::NW => Quad {center: Vec2::new(self.center.x - q, self.center.y + q), size: h},
-            Corner::NE => Quad {center: Vec2::new(self.center.x + q, self.center.y + q), size: h},
-            Corner::SW => Quad {center: Vec2::new(self.center.x - q, self.center.y - q), size: h},
-            Corner::SE => Quad {center: Vec2::new(self.center.x + q, self.center.y - q), size: h},
+            Corner::NW => Quad {
+                center: Vec2::new(self.center.x - q, self.center.y + q),
+                size: h,
+            },
+            Corner::NE => Quad {
+                center: Vec2::new(self.center.x + q, self.center.y + q),
+                size: h,
+            },
+            Corner::SW => Quad {
+                center: Vec2::new(self.center.x - q, self.center.y - q),
+                size: h,
+            },
+            Corner::SE => Quad {
+                center: Vec2::new(self.center.x + q, self.center.y - q),
+                size: h,
+            },
         }
     }
 
-    fn contains(&self, x: f32, y:f32) -> bool {
+    fn contains(&self, x: f32, y: f32) -> bool {
         let hl = self.size / 2.0;
-        (x >= self.center.x - hl) && (x < self.center.x + hl) && (y >= self.center.y - hl) && (y < self.center.y + hl)
+        (x >= self.center.x - hl)
+            && (x < self.center.x + hl)
+            && (y >= self.center.y - hl)
+            && (y < self.center.y + hl)
     }
 }
 
@@ -93,14 +139,60 @@ struct Node {
 }
 
 impl Node {
-    fn subdivide_and_insert(&mut self, subs: &mut SubQuads, entity: Entity, body: Body, transform: Transform) {
-        
-         match subs {
-            subs if subs.nw.node.quad.contains(transform.translation.x, transform.translation.y) => subs.nw.insert(entity, body, transform),
-            subs if subs.ne.node.quad.contains(transform.translation.x, transform.translation.y) => subs.ne.insert(entity, body, transform),
-            subs if subs.sw.node.quad.contains(transform.translation.x, transform.translation.y) => subs.sw.insert(entity, body, transform),
-            subs if subs.se.node.quad.contains(transform.translation.x, transform.translation.y) => subs.se.insert(entity, body, transform),
-            subs => panic!("position {}, {} was not in any quadrant?\n {:#?}, {:#?}, {:#?}, {:#?}", transform.translation.x, transform.translation.y, subs.nw.node.quad, subs.ne.node.quad, subs.sw.node.quad, subs.se.node.quad)
+
+    fn new() {
+
+    }
+
+    fn subdivide_and_insert(
+        &mut self,
+        subs: &mut SubQuads,
+        entity: Entity,
+        body: Body,
+        transform: Transform,
+    ) {
+        match subs {
+            subs if subs
+                .nw
+                .node
+                .quad
+                .contains(transform.translation.x, transform.translation.y) =>
+            {
+                subs.nw.insert(entity, body, transform)
+            }
+            subs if subs
+                .ne
+                .node
+                .quad
+                .contains(transform.translation.x, transform.translation.y) =>
+            {
+                subs.ne.insert(entity, body, transform)
+            }
+            subs if subs
+                .sw
+                .node
+                .quad
+                .contains(transform.translation.x, transform.translation.y) =>
+            {
+                subs.sw.insert(entity, body, transform)
+            }
+            subs if subs
+                .se
+                .node
+                .quad
+                .contains(transform.translation.x, transform.translation.y) =>
+            {
+                subs.se.insert(entity, body, transform)
+            }
+            subs => panic!(
+                "position {}, {} was not in any quadrant?\n {:#?}, {:#?}, {:#?}, {:#?}",
+                transform.translation.x,
+                transform.translation.y,
+                subs.nw.node.quad,
+                subs.ne.node.quad,
+                subs.sw.node.quad,
+                subs.se.node.quad
+            ),
         }
     }
 }
@@ -109,7 +201,7 @@ struct SubQuads {
     nw: Box<Quadtree>,
     ne: Box<Quadtree>,
     sw: Box<Quadtree>,
-    se: Box<Quadtree>
+    se: Box<Quadtree>,
 }
 
 impl SubQuads {
