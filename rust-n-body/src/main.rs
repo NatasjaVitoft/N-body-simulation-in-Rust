@@ -2,7 +2,7 @@ pub(crate) mod tests;
 //pub(crate) mod quadtree;
 //pub(crate) mod bhtree;
 pub(crate) mod idktree;
-use bevy::prelude::*;
+use bevy::{gizmos::{self, GizmoPlugin}, prelude::*};
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use idktree::{Quad, Quadtree};
 use rand::Rng;
@@ -13,6 +13,7 @@ pub struct SimulationSettings {
     // live tweakables
     delta_t: f32,
     g: f32,
+    show_tree: bool,
     // needs simulation reset
     min_body_mass: f32,
     max_body_mass: f32,
@@ -27,6 +28,7 @@ impl Default for SimulationSettings {
         SimulationSettings {
             delta_t: 0.001,
             g: 1.0,
+            show_tree: false,
             min_body_mass: 10.0,
             max_body_mass: 100.0,
             n_bodies: 1500,
@@ -74,6 +76,7 @@ fn ui_window(
         ui.add(egui::Slider::new(&mut settings.g, 0.0..=10.0).text("Gravity constant"));
         ui.add(egui::Slider::new(&mut settings.delta_t, 0.00000001..=0.01).text("Delta T"));
         ui.add(egui::Slider::new(&mut settings.theta, 0.1..=1.0).text("BH Theta"));
+        ui.add(egui::Checkbox::new(&mut settings.show_tree, "Draw Quadtree"));
 
         ui.add(egui::Label::new("Reset Sim after tweaking these"));
         ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=50000).text("Num Bodies"));
@@ -185,6 +188,7 @@ fn add_bodies(
 fn update(
     mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>,
     settings: Res<SimulationSettings>,
+    gizmos: Gizmos,
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
     // let mut col_map: HashMap<u32, Vec3> = HashMap::new();
@@ -200,6 +204,10 @@ fn update(
 
     for (entity1, body1, transform1, velocity1) in query.iter() {
         tree.insert(entity1, *transform1, *body1);
+    }
+
+    if settings.show_tree {
+        tree.draw_tree(gizmos);
     }
 
     for (entity1, body1, transform1, velocity1) in query.iter_mut() {
