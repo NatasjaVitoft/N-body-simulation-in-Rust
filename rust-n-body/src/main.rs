@@ -4,10 +4,16 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
+use bevy::prelude::{Color, Gizmos};
 
 mod quadtree;
 use crate::quadtree::{BHTree, Quadrant};
 
+
+
+// Ressource to draw root quadrant
+#[derive(Resource, Clone)]
+struct RootQuadrant(pub Quadrant);
 
 #[derive(Resource)]
 pub struct SimulationSettings {
@@ -59,7 +65,7 @@ fn main() {
         .add_event::<ResetEvent>()
         .add_systems(EguiContextPass, ui_window)
         .add_systems(Startup, (spawn_camera, add_bodies))
-        .add_systems(Update, (reset_handler, update))
+        .add_systems(Update, (reset_handler, update, draw_quadrant))
         .run();
 }
 
@@ -188,13 +194,14 @@ fn add_bodies(
 fn update(
     mut query: Query<(Entity, &mut Body, &mut Transform, &mut Velocity)>,
     settings: Res<SimulationSettings>,
+    mut commands: Commands,
 ) {
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
 
     let mut min = Vec2::splat(f32::MAX);
     let mut max = Vec2::splat(f32::MIN);
 
-    for (_entity, _body, transform, _velocity) in query.iter() {
+    for (_entity, _body, transform, _velocity) in query.iter() { // Marked with "_" for entity, body and velocity to supress warnings. We are only interested in the position which is in transform 
         let pos = transform.translation.truncate();
         min = min.min(pos);
         max = max.max(pos);
@@ -203,12 +210,10 @@ fn update(
     let center = (min + max) / 2.0;
     let size = (max - min).max_element(); 
     
-    let root_quad = Quadrant::new(center, size * 40.0);
-   
+    let root_quad = Quadrant::new(center, size * 1.1);
+    commands.insert_resource(RootQuadrant(root_quad.clone()));
 
     root_quad.print_bounds(); 
-
-    //spawn_quadrants(&root_quad, &mut commands, &mut materials, &mut meshes, 0);
 
     let mut tree = BHTree::new(root_quad);
 
@@ -261,39 +266,20 @@ fn spawn_body(
 
 
 
-/*
-fn spawn_quadrants(
-    quadrant: &Quadrant,
-    commands: &mut Commands,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    depth: u32, // Depth of the quadrant to prevent infinite recursion
-) {
-    // Visualize the current quadrant
-    let transform = Transform::from_xyz(quadrant.center.x, quadrant.center.y, 0.0);
 
-    // You can adjust the color and opacity to differentiate between levels of depth
-    let color = Color::rgba(0.5, 0.5, 0.5, 1.0 / (depth + 1) as f32);
-    
-    // Create a rectangle (or square) to visualize the quadrant
-    commands.spawn_bundle(OrthographicCameraBundle {
-        transform,
-        ..Default::default()
-    });
-    
-    commands.spawn_bundle((
-        meshes.add(Mesh::from(shape::Quad { size: Vec2::new(quadrant.len, quadrant.len), ..Default::default() })),
-        materials.add(ColorMaterial::from(color)),
-        transform,
-    ));
+fn draw_quadrant(mut gizmos: Gizmos, root_quad: Option<Res<RootQuadrant>>) {
+    if let Some(root_quad) = root_quad {
+        let root = &root_quad.0;
 
-    // Stop recursion if we reach the minimum size
-    if quadrant.len > MIN_QUADRANT_LENGTH {
-        // Recursively add subquadrants (NW, NE, SW, SE)
-        for corner in [Corner::NW, Corner::NE, Corner::SW, Corner::SE] {
-            let subquad = quadrant.subquad(corner);
-            spawn_quadrants(&subquad, commands, materials, meshes, depth + 1);
-        }
+        let half = root.len / 2.0;
+        let top_left = Vec3::new(root.center.x - half, root.center.y + half, 0.0);
+        let top_right = Vec3::new(root.center.x + half, root.center.y + half, 0.0);
+        let bottom_left = Vec3::new(root.center.x - half, root.center.y - half, 0.0);
+        let bottom_right = Vec3::new(root.center.x + half, root.center.y - half, 0.0);
+
+        gizmos.line(top_left, top_right, Color::srgb(1.0, 1.0, 0.0));
+        gizmos.line(top_right, bottom_right, Color::srgb(1.0, 1.0, 0.0));
+        gizmos.line(bottom_right, bottom_left, Color::srgb(1.0, 1.0, 0.0));
+        gizmos.line(bottom_left, top_left, Color::srgb(1.0, 1.0, 0.0));
     }
 }
-*/

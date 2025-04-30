@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use crate::Body;
 
-pub const MIN_QUADRANT_LENGTH: f32 = 0.5; // How small a quandrant can be
+pub const MIN_QUADRANT_LENGTH: f32 = 0.1; // How small a quandrant can be
 pub const THETA_THRESHOLD: f32 = 0.5; // What is Theta?
+pub const EPSILON: f32 = 0.01;
 
 #[derive(Debug, Default, Clone, Copy)] // More powerful and flexible
 pub enum Corner {
@@ -30,10 +31,12 @@ impl Quadrant {
     // Checking if the position of the point is inside the quadrant 
     pub fn contains(&self, pos: Vec2) -> bool {
         let half_len = self.len / 2.0;
-        (pos.x >= self.center.x - half_len)
-            && (pos.x <= self.center.x + half_len) 
-            && (pos.y >= self.center.y - half_len)
-            && (pos.y <= self.center.y + half_len) 
+        let tolerance = 0.0001; // Allowing some tolerance for precision errors
+    
+        (pos.x >= self.center.x - half_len - tolerance)
+            && (pos.x <= self.center.x + half_len + tolerance)
+            && (pos.y >= self.center.y - half_len - tolerance)
+            && (pos.y <= self.center.y + half_len + tolerance)
     }
 
     // Divides the current quadrant into four smaller boxes and takes a corner as input paramter
@@ -135,7 +138,7 @@ impl BHTree {
             match &node.item {
                 NodeItem::Internal(subquads) => {
                     let distance = node.pos.distance(position);
-                    if self.quad.len / distance < THETA_THRESHOLD {
+                    if self.quad.len / distance + EPSILON < THETA_THRESHOLD {
                         self.approximate_force(node, position, body.mass)
                     } else {
                         subquads.compute_force(entity, body, position)
@@ -180,6 +183,7 @@ impl SubQuadrants {
     }
 
     fn insert(&mut self, entity: Entity, body: &Body, pos: Vec2) {
+        
         if !self.nw.quad.contains(pos) && !self.ne.quad.contains(pos) &&
             !self.sw.quad.contains(pos) && !self.se.quad.contains(pos) {
     
