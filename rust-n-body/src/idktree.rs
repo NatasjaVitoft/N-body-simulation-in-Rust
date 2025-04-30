@@ -1,4 +1,4 @@
-use crate::Body;
+use crate::{Body, Velocity};
 use bevy::prelude::*;
 
 pub struct Quadtree {
@@ -65,7 +65,7 @@ impl TreeNode {
             self.se.insert_or_divide(entity, transform, body);
         } else {
             eprint!(
-                "Position not found in any quads!: {:?}.\nTree node: \n{:?} \nQuads: \nnw: {:?} \nne: {:?} \nsw: {:?} \nse: {:?}",
+                "\nPosition not found in any quads!: {:?}.\nTree node: \n{:?} \nQuads: \nnw: {:?} \nne: {:?} \nsw: {:?} \nse: {:?}",
                 transform.translation,
                 &self.quad,
                 &self.nw.quad,
@@ -213,6 +213,7 @@ impl Subquad {
                         new_node.insert_into_subquad(entity, transform, body);
                         new_node.insert_into_subquad(tuple.0, tuple.1, tuple.2);
 
+
                         let m1 = self.mass;
                         let m2 = body.mass;
                         let m = m1 + m2;
@@ -250,30 +251,31 @@ impl Quad {
         }
     }
 
-    pub fn new_containing(transforms: &Vec<Transform>) -> Self {
+    pub fn new_containing(positions: &[Vec2]) -> Self {
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
         let mut max_x = f32::MIN;
         let mut max_y = f32::MIN;
 
-        for t in transforms {
-            min_x = min_x.min(t.translation.x);
-            min_y = min_y.min(t.translation.y);
-            max_x = max_x.max(t.translation.x);
-            max_y = max_y.max(t.translation.x);
+        for p in positions {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
         }
 
         let center = Vec2::new(min_x + max_x, min_y + max_y) * 0.5;
-        let size = (max_x - min_x).max(max_y - min_y);
+        let size = (max_x - min_x).max(max_y - min_y) + 10000.0;
 
         Self { center, size }
     }
 
     fn contains(&self, pos: Vec2) -> bool {
         let hl = self.size / 2.0;
-        (pos.x >= self.center.x - hl)
-            && (pos.x <= self.center.x + hl)
-            && (pos.y >= self.center.y - hl)
-            && (pos.y <= self.center.y + hl)
+        let eps = hl * 0.0001;
+        (pos.x >= self.center.x - hl - eps)
+            && (pos.x <= self.center.x + hl + eps)
+            && (pos.y >= self.center.y - hl - eps)
+            && (pos.y <= self.center.y + hl + eps)
     }
 }

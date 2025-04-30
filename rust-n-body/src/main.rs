@@ -189,19 +189,14 @@ fn update(
     let mut accel_map: HashMap<u32, Vec3> = HashMap::new();
     // let mut col_map: HashMap<u32, Vec3> = HashMap::new();
 
-/*     let transforms: Vec<Transform> = query
+    let positions: Vec<Vec2> = query
         .iter()
-        .map(|(_, _, transform, _)| transform.clone())
+        .map(|(_e, _b, t, _v)| Vec2::new(t.translation.x, t.translation.y))
         .collect();
 
-    let quad = Quad::new_containing(&transforms); */
-    let quad = Quad::new(0.0, 0.0, 100000.0);
+    let quad = Quad::new_containing(&positions);
+    // let quad = Quad::new(0.0, 0.0, 100000.0);
     let mut tree = Quadtree::new(quad);
-    /*    let mut accel_cum = Vec3 {
-        x: (0.0),
-        y: (0.0),
-        z: (settings.z),
-    }; */
 
     for (entity1, body1, transform1, velocity1) in query.iter() {
         tree.insert(entity1, *transform1, *body1);
