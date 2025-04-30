@@ -1,5 +1,5 @@
-use crate::{Body, Velocity};
-use bevy::{gizmos, prelude::*};
+use crate::Body;
+use bevy::prelude::*;
 
 pub struct Quadtree {
     root: TreeNode,
@@ -273,7 +273,7 @@ impl Subquad {
                     Some(tuple) => {
                         // Node is occupied. We must dig deeper!!!1
 
-                        if self.quad.size < 0.5 {
+                        if self.quad.size < 1.0 {
                             // unless node is too small.
                             // To avoid weird edge cases where it cannot be computed if a position is in a quad,
                             // we just add the mass and update center of mass of the node.
@@ -349,7 +349,7 @@ impl Quad {
         }
 
         let center = Vec2::new(min_x + max_x, min_y + max_y) * 0.5;
-        let size = (max_x - min_x).max(max_y - min_y);
+        let size = (max_x - min_x).max(max_y - min_y) + 1.0;
 
         Self { center, size }
     }

@@ -1,5 +1,5 @@
-pub(crate) mod tests;
 pub(crate) mod idktree;
+pub(crate) mod tests;
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use idktree::{Quad, Quadtree};
@@ -19,6 +19,8 @@ pub struct SimulationSettings {
     spawn_area: RangeInclusive<f32>,
     z: f32,
     theta: f32,
+    init_vel: f32,
+    donut: bool,
 }
 
 impl Default for SimulationSettings {
@@ -33,6 +35,8 @@ impl Default for SimulationSettings {
             spawn_area: -300.0..=300.0,
             z: 10.0,
             theta: 0.5,
+            init_vel: 50.0,
+            donut: false,
         }
     }
 }
@@ -74,12 +78,20 @@ fn ui_window(
         ui.add(egui::Slider::new(&mut settings.g, 0.0..=10.0).text("Gravity constant"));
         ui.add(egui::Slider::new(&mut settings.delta_t, 0.00000001..=0.01).text("Delta T"));
         ui.add(egui::Slider::new(&mut settings.theta, 0.1..=1.0).text("BH Theta"));
-        ui.add(egui::Checkbox::new(&mut settings.show_tree, "Draw Quadtree"));
+        ui.add(egui::Checkbox::new(
+            &mut settings.show_tree,
+            "Draw Quadtree",
+        ));
 
-        ui.add(egui::Label::new("Reset Sim after tweaking these"));
+        ui.add(egui::Label::new("Reset Sim after tweaking these:"));
         ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=50000).text("Num Bodies"));
         ui.add(egui::Slider::new(&mut settings.min_body_mass, 1.0..=5000.0).text("Min Body Mass"));
         ui.add(egui::Slider::new(&mut settings.max_body_mass, 1.0..=5000.0).text("Max Body Mass"));
+        ui.add(egui::Checkbox::new(&mut settings.donut, "Donut Start"));
+        ui.add(
+            egui::Slider::new(&mut settings.init_vel, 0.0..=1000.0)
+                .text("Initial Velocity (Only Donut)"),
+        );
         if ui.button("Reset").clicked() {
             reset_writer.write(ResetEvent);
         }
@@ -137,7 +149,7 @@ fn body_collide(
     imp: &Vec3,
     dist: f32,
 ) -> Vec3 {
-    // elastic colliison
+    // elastic colliison (its horrible)
     let m_sum = body1.mass + body2.mass;
     let v_diff = vel2.0 - vel1.0;
 
@@ -167,11 +179,30 @@ fn add_bodies(
             radius: mass_to_radius(rng_mass),
             hue: mass_to_hue(rng_mass, settings.min_body_mass, settings.max_body_mass),
         };
-        let x = rng.random_range(settings.spawn_area.clone());
-        let y = rng.random_range(settings.spawn_area.clone());
 
-        let transform: Transform = Transform::from_xyz(x, y, settings.z);
-        let velocity = Velocity(Vec3::ZERO);
+        let transform: Transform;
+        let velocity: Velocity;
+
+        if settings.donut {
+            let x = rng.random_range(settings.spawn_area.clone());
+            let y = rng.random_range(settings.spawn_area.clone());
+            let rng_mag = rng.random_range(100.0..=200.0);
+
+            let dir = Vec2::new(x, y).normalize();
+            let rng_vec = dir * rng_mag;
+
+            transform = Transform::from_xyz(rng_vec.x, rng_vec.y, settings.z);
+            let angle_vel = Vec3::from((dir.perp() * settings.init_vel, settings.z));
+            velocity = Velocity(angle_vel);
+        }
+        else{
+            let x = rng.random_range(settings.spawn_area.clone());
+            let y = rng.random_range(settings.spawn_area.clone());
+
+            transform = Transform::from_xyz(x, y, settings.z);
+            velocity = Velocity(Vec3::ZERO);
+        }
+
         spawn_body(
             body,
             transform,
@@ -200,7 +231,7 @@ fn update(
     // let quad = Quad::new(0.0, 0.0, 100000.0);
     let mut tree = Quadtree::new(quad);
 
-    for (entity1, body1, transform1, velocity1) in query.iter() {
+    for (entity1, body1, transform1, _velocity1) in query.iter() {
         tree.insert(entity1, *transform1, *body1);
     }
 
@@ -208,7 +239,7 @@ fn update(
         tree.draw_tree(gizmos);
     }
 
-    for (entity1, body1, transform1, velocity1) in query.iter_mut() {
+    for (entity1, body1, transform1, _velocity1) in query.iter_mut() {
         let accel = tree.get_total_accel(
             entity1,
             *transform1,
@@ -264,7 +295,7 @@ fn spawn_body(
 ) {
     commands.spawn((
         Mesh2d(meshes.add(Circle::new(body.radius))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.5, 0.1)))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(Srgba::rgb(body.hue, 0.5, 0.0)))),
         body,
         transform,
         velocity,
