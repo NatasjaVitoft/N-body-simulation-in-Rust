@@ -13,8 +13,7 @@ impl Quadtree {
     }
 
     pub fn insert(&mut self, entity: Entity, transform: Transform, body: Body) {
-        self.root
-            .insert_into_subquad(entity, transform, body);
+        self.root.insert_into_subquad(entity, transform, body);
     }
 
     pub fn get_total_accel(
@@ -30,18 +29,17 @@ impl Quadtree {
             .get_total_accel(entity, transform, body, g, dt, theta)
     }
     pub fn draw_tree(&self, mut gizmos: Gizmos) {
-
         fn draw_node(node: &TreeNode, gizmos: &mut Gizmos) {
             gizmos.rect_2d(
                 Isometry2d::from_xy(node.quad.center.x, node.quad.center.y),
                 Vec2::splat(node.quad.size),
-                Color::linear_rgba(0.0, 0.0, 1.0, 0.8),
+                Color::linear_rgba(0.0, 0.0, 1.0, 0.2),
             );
         }
 
         fn recurse(gizmos: &mut Gizmos, node: &TreeNode) {
             draw_node(&node, gizmos);
-            
+
             if let Some(child) = &node.nw.node {
                 recurse(gizmos, child);
             }
@@ -81,12 +79,7 @@ impl TreeNode {
         }
     }
 
-    fn insert_into_subquad(
-        &mut self,
-        entity: Entity,
-        transform: Transform,
-        body: Body,
-    ) {
+    fn insert_into_subquad(&mut self, entity: Entity, transform: Transform, body: Body) {
         let pos = Vec2::new(transform.translation.x, transform.translation.y);
 
         if !self.quad.contains(pos) {
@@ -247,12 +240,7 @@ impl Subquad {
         }
     }
 
-    fn insert_or_divide(
-        &mut self,
-        entity: Entity,
-        transform: Transform,
-        body: Body,
-    ) {
+    fn insert_or_divide(&mut self, entity: Entity, transform: Transform, body: Body) {
         match &mut self.node {
             Some(node) => {
                 // Node Is internal. Updat center of mass and total mass, and insert into subquadrants
@@ -284,27 +272,48 @@ impl Subquad {
                     }
                     Some(tuple) => {
                         // Node is occupied. We must dig deeper!!!1
-                        let mut new_node = TreeNode::new(self.quad);
 
-                        new_node.insert_into_subquad(entity, transform, body);
-                        new_node.insert_into_subquad(tuple.0, tuple.1, tuple.2);
+                        if self.quad.size < 0.5 {
+                            // unless node is too small.
+                            // To avoid weird edge cases where it cannot be computed if a position is in a quad,
+                            // we just add the mass and update center of mass of the node.
+                            let m1 = self.mass;
+                            let m2 = body.mass;
+                            let m = m1 + m2;
+                            let x1 = self.pos_mass.x;
+                            let x2 = transform.translation.x;
+                            let y1 = self.pos_mass.y;
+                            let y2 = transform.translation.y;
 
-                        let m1 = self.mass;
-                        let m2 = body.mass;
-                        let m = m1 + m2;
-                        let x1 = self.pos_mass.x;
-                        let x2 = transform.translation.x;
-                        let y1 = self.pos_mass.y;
-                        let y2 = transform.translation.y;
+                            let x = (x1 * m1 + x2 * m2) / m;
+                            let y = (y1 * m1 + y2 * m2) / m;
 
-                        let x = (x1 * m1 + x2 * m2) / m;
-                        let y = (y1 * m1 + y2 * m2) / m;
+                            self.mass = m;
+                            self.pos_mass.x = x;
+                            self.pos_mass.y = y;
+                        } else {
+                            let mut new_node = TreeNode::new(self.quad);
 
-                        self.mass = m;
-                        self.pos_mass.x = x;
-                        self.pos_mass.y = y;
+                            new_node.insert_into_subquad(entity, transform, body);
+                            new_node.insert_into_subquad(tuple.0, tuple.1, tuple.2);
 
-                        self.node = Some(new_node);
+                            let m1 = self.mass;
+                            let m2 = body.mass;
+                            let m = m1 + m2;
+                            let x1 = self.pos_mass.x;
+                            let x2 = transform.translation.x;
+                            let y1 = self.pos_mass.y;
+                            let y2 = transform.translation.y;
+
+                            let x = (x1 * m1 + x2 * m2) / m;
+                            let y = (y1 * m1 + y2 * m2) / m;
+
+                            self.mass = m;
+                            self.pos_mass.x = x;
+                            self.pos_mass.y = y;
+
+                            self.node = Some(new_node);
+                        }
                     }
                 }
             }

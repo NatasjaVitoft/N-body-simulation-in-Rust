@@ -1,8 +1,6 @@
 pub(crate) mod tests;
-//pub(crate) mod quadtree;
-//pub(crate) mod bhtree;
 pub(crate) mod idktree;
-use bevy::{gizmos::{self, GizmoPlugin}, prelude::*};
+use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use idktree::{Quad, Quadtree};
 use rand::Rng;
