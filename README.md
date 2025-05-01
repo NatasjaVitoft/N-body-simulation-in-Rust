@@ -11,6 +11,8 @@ At the moment the only rules for body movement is mutual attraction.
 
 Body attraction is calculated using Barnes-Hut algorithm.
 
+Mass of the bodie is represented by their size and and color in relation to each other. This means that heavier generated objects are bigger and more red in colour, than more light bodies, which are smaller and more green.
+
 A GUI is available for for tweaking different parameters in the simulation. Some are live-tweakable while the simluation is running, others need a restart.
 
 Parameters available are:
@@ -27,6 +29,8 @@ Parameters available are:
 - **BH Theta** (Theta value for Barnes-Hut algo. Higher value make the simulation run faster, but less accurate)
 - **Donut Start** (Init bodies in a "Donut" formation instead of a square)
 - **Initial Velocity** (Set body init velocity when in Donut Start)
+
+
 
 ### Resources
 
