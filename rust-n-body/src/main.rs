@@ -140,7 +140,8 @@ pub fn mass_to_hue(m: f32, min_mass: f32, max_mass: f32) -> f32 {
 
     ((m - min_mass) * new_max) / (max_mass - min_mass)
 }
-
+/* 
+might be useful in the futu
 fn body_collide(
     body1: &Body,
     body2: &Body,
@@ -158,7 +159,7 @@ fn body_collide(
 
     imp * (num_a / den_a)
 }
-
+ */
 fn add_bodies(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -186,7 +187,7 @@ fn add_bodies(
         if settings.donut {
             let x = rng.random_range(settings.spawn_area.clone());
             let y = rng.random_range(settings.spawn_area.clone());
-            let rng_mag = rng.random_range(100.0..=200.0);
+            let rng_mag = rng.random_range(10.0..=200.0);
 
             let dir = Vec2::new(x, y).normalize();
             let rng_vec = dir * rng_mag;

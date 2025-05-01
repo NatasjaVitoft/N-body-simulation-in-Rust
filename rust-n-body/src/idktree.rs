@@ -267,8 +267,6 @@ impl Subquad {
                     None => {
                         // No body present
                         self.entity = Some((entity, transform, body));
-                        // self.mass = body.mass;
-                        // self.pos_mass = Vec2::new(transform.translation.x, transform.translation.y);
                     }
                     Some(tuple) => {
                         // Node is occupied. We must dig deeper!!!1
