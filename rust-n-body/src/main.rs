@@ -5,6 +5,7 @@ use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
 use idktree::{Quad, Quadtree};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
+use wasm_bindgen::prelude::*;
 
 #[derive(Resource)]
 pub struct SimulationSettings {
@@ -54,7 +55,7 @@ pub struct Body {
 #[derive(Event)]
 struct ResetEvent;
 
-fn main() {
+pub fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(SimulationSettings::default())
