@@ -34,7 +34,7 @@ Parameters available are:
 - **Donut Start** (Init bodies in a "Donut" formation instead of a square)
 - **Initial Velocity** (Set body init velocity when in Donut Start)
 
-It can take some time to compile the simulation, so we have used a GitHub Pages to let you run it directly in a browser without compiling.
+It can take some time to compile the simulation, so we have created a WASM build and uploaded it to a GitHub Pages to let you run it directly in a browser without compiling.
 Keep in mind that the simulation will likely run faster if you compile it yourself rather than running it in the browser.
 
 You can try the simulation here: https://natasjavitoft.github.io/N-body-simulation-in-Rust/
