@@ -1,10 +1,13 @@
-pub(crate) mod idktree;
+pub(crate) mod bhtree;
 pub(crate) mod tests;
 use bevy::prelude::*;
 use bevy_egui::{EguiContextPass, EguiContexts, EguiPlugin, egui};
-use idktree::{Quad, Quadtree};
+use bhtree::{Quad, Quadtree};
 use rand::Rng;
 use std::{collections::HashMap, ops::RangeInclusive};
+
+mod collision;  
+use collision::{collision};
 
 #[derive(Resource)]
 pub struct SimulationSettings {
@@ -21,6 +24,8 @@ pub struct SimulationSettings {
     theta: f32,
     init_vel: f32,
     donut: bool,
+    elasticity: f32,
+    collision_enabled: bool,
 }
 
 impl Default for SimulationSettings {
@@ -37,6 +42,8 @@ impl Default for SimulationSettings {
             theta: 0.5,
             init_vel: 50.0,
             donut: false,
+            elasticity: 1.0, 
+            collision_enabled: false,
         }
     }
 }
@@ -65,7 +72,7 @@ fn main() {
         .add_event::<ResetEvent>()
         .add_systems(EguiContextPass, ui_window)
         .add_systems(Startup, (spawn_camera, add_bodies))
-        .add_systems(Update, (reset_handler, update))
+        .add_systems(Update, (collision, reset_handler, update))
         .run();
 }
 
@@ -82,6 +89,8 @@ fn ui_window(
             &mut settings.show_tree,
             "Draw Quadtree",
         ));
+        ui.add(egui::Checkbox::new(&mut settings.collision_enabled, "Enable Collision"));
+        ui.add(egui::Slider::new(&mut settings.elasticity, 0.0..=1.0).text("Elasticity"));
 
         ui.add(egui::Label::new("Reset Sim after tweaking these:"));
         ui.add(egui::Slider::new(&mut settings.n_bodies, 2..=50000).text("Num Bodies"));
@@ -302,3 +311,4 @@ fn spawn_body(
         velocity,
     ));
 }
+
