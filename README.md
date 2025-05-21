@@ -11,13 +11,13 @@
 This project is a simple n-body simulation written in Rust, using the Bevy game engine for update loop and rendering engine. It is created as an exam project for our Rust course in spring 2025.
 
 Bodies are generated with random mass and position. Maximum and minimum mass are defined within parameters which are tweakable at runtime.
-At the moment the only rules for body movement is mutual attraction.
+At the moment the only rules for body movement is gravitational attraction and optional collisions.
 
 Body attraction is calculated using Barnes-Hut algorithm.
 
-Mass of the bodie is represented by their size and and color in relation to each other. This means that heavier generated objects are bigger and more red in colour, than more light bodies, which are smaller and more green.
+Individual bodies' mass is represented by their size and color in relation to each other. This means that heavier generated bodies are bigger and more red in colour, than lighter bodies, which are smaller and more green.
 
-A GUI is available for for tweaking different parameters in the simulation. Some are live-tweakable while the simluation is running, others need a restart.
+A GUI is available for tweaking different parameters in the simulation. Some are live-tweakable while the simluation is running, others need a restart.
 
 Parameters available are:
 
@@ -37,7 +37,13 @@ Parameters available are:
 It can take some time to compile the simulation, so we have created a WASM build and uploaded it to a GitHub Pages to let you run it directly in a browser without compiling.
 Keep in mind that the simulation will likely run faster if you compile it yourself rather than running it in the browser.
 
-You can try the simulation here: https://natasjavitoft.github.io/N-body-simulation-in-Rust/
+### How to Run
+
+For best performance but long compile time, compile and run the application with `cargo run`
+
+Alternatively, the simulation can be run in a browser by either going to https://natasjavitoft.github.io/N-body-simulation-in-Rust/
+
+Or on localhost by serving the `/web` directory (e. g with nodejs: `npx serve ./rust-n-nbody/web`)
 
 ### Resources
 
