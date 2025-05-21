@@ -147,7 +147,6 @@ impl TreeNode {
         dt: f32,
         theta: f32,
     ) -> Vec3 {
-        //  TODO FIX AND DO THE REST OF THE ChILDREN
         let mut cum_accel = Vec3::ZERO;
 
         cum_accel += get_accel(&self.nw, entity, transform, body, g, dt, theta);
